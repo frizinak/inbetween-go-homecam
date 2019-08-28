@@ -158,7 +158,7 @@ func (s *Server) addBytes(bytes uint64) {
 	s.sem.Lock()
 	s.bytes += bytes
 	since := time.Since(s.since).Seconds()
-	if since > 1 {
+	if since > 3 {
 		s.throughput = float64(s.bytes) / since
 		s.since = time.Now()
 		s.bytes = 0
