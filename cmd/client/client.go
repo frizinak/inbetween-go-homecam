@@ -36,7 +36,7 @@ func main() {
 	c := client.New(l, conf.Address, []byte(conf.Password))
 	tick := make(chan *bytes.Buffer)
 	go func() {
-		panic(c.Connect(tick))
+		l.Fatal(c.Connect(tick))
 	}()
 	v.Start(tick)
 }
