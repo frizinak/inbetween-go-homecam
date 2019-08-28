@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
 	"image/jpeg"
 	"io"
 	"log"
@@ -117,13 +118,21 @@ func (s *Server) initCam() error {
 		sizes := s.cam.GetSupportedFrameSizes(pix)
 		s.resolutions = make([]webcam.FrameSize, 0, len(sizes))
 		for i := range sizes {
-			res := int(sizes[i].MaxWidth * sizes[i].MaxHeight)
+			res := int(sizes[i].MaxWidth * sizes[i].MinHeight)
 			if res < s.quality.MinResolution || res > s.quality.MaxResolution {
 				continue
 			}
 			s.resolutions = append(s.resolutions, sizes[i])
 		}
 		s.activeRes = 0
+
+		if len(s.resolutions) == 0 {
+			for i := range sizes {
+				s.l.Printf("%dx%d = %d", sizes[i].MaxWidth, sizes[i].MinHeight, sizes[i].MaxWidth*sizes[i].MinHeight)
+			}
+			return errors.New("No resolutions found, try adjusting the min/max requirments")
+		}
+
 	}
 
 	_, _, _, err = s.cam.SetImageFormat(
