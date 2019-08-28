@@ -355,7 +355,6 @@ func (s *Server) Listen(output <-chan *bytes.Buffer) error {
 					s.l.Println(err)
 					continue
 				}
-				d = bytes.NewBuffer(make([]byte, 0, d.Len()))
 				d.Reset()
 				if err := jpeg.Encode(d, i, s.jpegOpts); err != nil {
 					s.l.Println(err)
@@ -410,11 +409,13 @@ func (s *Server) Start() (<-chan *bytes.Buffer, <-chan error) {
 				continue
 			}
 
-			d, err := s.cam.ReadFrame()
+			_d, err := s.cam.ReadFrame()
 			if err != nil {
 				errs <- err
 				return
 			}
+			d := make([]byte, len(_d))
+			copy(d, _d)
 
 			last = time.Now()
 			output <- bytes.NewBuffer(d)
