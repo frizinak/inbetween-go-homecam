@@ -20,42 +20,52 @@ const (
 
 const chunkSizeMulti = 50
 
-func Encrypt(
-	r io.Reader,
-	w io.Writer,
-	passphrase []byte,
-	saltSize uint16,
-	cost uint8,
-) error {
+type KeySlice []byte
+
+type ImmutableKeyEncrypter struct {
+	key      KeySlice
+	salt     []byte
+	saltSize uint16
+	cost     uint8
+}
+
+func NewImmutableKeyEncrypter(passphrase []byte, saltSize uint16, cost uint8) (*ImmutableKeyEncrypter, error) {
 	salt, err := salt(saltSize)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	key, err := Key(passphrase, salt, cost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	return &ImmutableKeyEncrypter{key: key, salt: salt, saltSize: saltSize, cost: cost}, nil
+}
+
+func (e *ImmutableKeyEncrypter) Encrypt(
+	r io.Reader,
+	w io.Writer,
+) error {
 	iv := make([]byte, aes.BlockSize)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		return err
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(e.key)
 	if err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, cost); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, e.cost); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, saltSize); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, e.saltSize); err != nil {
 		return err
 	}
 
-	if _, err := w.Write(salt); err != nil {
+	if _, err := w.Write(e.salt); err != nil {
 		return err
 	}
 
@@ -71,7 +81,57 @@ func Encrypt(
 	)
 }
 
-func Header(r io.Reader) (salt, iv []byte, cost uint8, err error) {
+type ImmutableKeyDecrypter struct {
+	key        KeySlice
+	passphrase []byte
+}
+
+func NewImmutableKeyDecrypter(passphrase []byte) *ImmutableKeyDecrypter {
+	return &ImmutableKeyDecrypter{passphrase: passphrase}
+}
+
+func (d *ImmutableKeyDecrypter) Decrypt(r io.Reader, w io.Writer) error {
+	if d.key == nil {
+		salt, iv, cost, err := header(r)
+		if err != nil {
+			return err
+		}
+
+		key, err := decryptWithHeader(r, w, d.passphrase, salt, iv, cost)
+		if err != nil {
+			return err
+		}
+		d.key = key
+
+		return nil
+	}
+
+	return decryptWithKey(r, w, d.key)
+}
+
+func Encrypt(
+	r io.Reader,
+	w io.Writer,
+	passphrase []byte,
+	saltSize uint16,
+	cost uint8,
+) error {
+	e, err := NewImmutableKeyEncrypter(passphrase, saltSize, cost)
+	if err != nil {
+		return err
+	}
+	return e.Encrypt(r, w)
+}
+
+func Decrypt(
+	r io.Reader,
+	w io.Writer,
+	passphrase []byte,
+) error {
+	return NewImmutableKeyDecrypter(passphrase).Decrypt(r, w)
+}
+
+func header(r io.Reader) (salt, iv []byte, cost uint8, err error) {
 	err = errors.New("Input is not encrypted")
 	var saltSize uint16
 	if binary.Read(r, binary.LittleEndian, &cost) != nil {
@@ -94,15 +154,34 @@ func Header(r io.Reader) (salt, iv []byte, cost uint8, err error) {
 	return
 }
 
-func DecryptWithHeader(
+func decryptWithHeader(
 	r io.Reader,
 	w io.Writer,
 	passphrase []byte,
 	salt,
 	iv []byte,
 	cost uint8,
-) error {
+) (KeySlice, error) {
 	key, err := Key(passphrase, salt, cost)
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	return key, decrypt(
+		r,
+		w,
+		block,
+		iv,
+	)
+}
+
+func decryptWithKey(r io.Reader, w io.Writer, key KeySlice) error {
+	_, iv, _, err := header(r)
 	if err != nil {
 		return err
 	}
@@ -118,19 +197,6 @@ func DecryptWithHeader(
 		block,
 		iv,
 	)
-}
-
-func Decrypt(
-	r io.Reader,
-	w io.Writer,
-	passphrase []byte,
-) error {
-	salt, iv, cost, err := Header(r)
-	if err != nil {
-		return err
-	}
-
-	return DecryptWithHeader(r, w, passphrase, salt, iv, cost)
 }
 
 func encrypt(
@@ -242,7 +308,7 @@ func decrypt(
 	return nil
 }
 
-func Key(passphrase, salt []byte, cost uint8) ([]byte, error) {
+func Key(passphrase, salt []byte, cost uint8) (KeySlice, error) {
 	if cost > MaxCost {
 		return nil, errors.New("scrypt cost too high")
 	} else if cost < MinCost {

@@ -45,7 +45,7 @@ func (c *Client) Connect(data chan<- *bytes.Buffer) error {
 		}
 
 		handshakeHash, err := scrypt.Key(
-			c.pass,
+			server.CommonSecret,
 			handshake,
 			1<<server.HandshakeCost,
 			8,
@@ -60,6 +60,8 @@ func (c *Client) Connect(data chan<- *bytes.Buffer) error {
 			return err
 		}
 
+		pass := append(handshakeHash, c.pass...)
+		crypter := crypto.NewImmutableKeyDecrypter(pass)
 		for {
 			if _, err := conn.Write(c.w); err != nil {
 				c.connErr(err)
@@ -82,7 +84,7 @@ func (c *Client) Connect(data chan<- *bytes.Buffer) error {
 			}
 
 			out := bytes.NewBuffer(make([]byte, 0, len(d)))
-			if err := crypto.Decrypt(bytes.NewBuffer(d), out, c.pass); err != nil {
+			if err := crypter.Decrypt(bytes.NewBuffer(d), out); err != nil {
 				c.connErr(err)
 				break
 			}

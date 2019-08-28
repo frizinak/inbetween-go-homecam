@@ -16,11 +16,11 @@ import (
 	"golang.org/x/crypto/scrypt"
 )
 
-var Hello = []byte("HelloThereCamServer")
+var CommonSecret = []byte("HelloThereCamServer")
 
 const (
-	EncryptCost      = 12
-	HandshakeCost    = 16
+	EncryptCost      = 17
+	HandshakeCost    = 12
 	HandshakeLen     = 128
 	HandshakeHashLen = 256
 )
@@ -266,7 +266,7 @@ func (s *Server) conn(c net.Conn) {
 	}
 
 	handshakeHash, err := scrypt.Key(
-		s.pass,
+		CommonSecret,
 		handshake,
 		1<<HandshakeCost,
 		8,
@@ -297,6 +297,14 @@ func (s *Server) conn(c net.Conn) {
 	s.addConn()
 	defer s.removeConn()
 	s.l.Println("New client", c.RemoteAddr())
+
+	pass := append(handshakeHash, s.pass...)
+	crypter, err := crypto.NewImmutableKeyEncrypter(pass, 60, EncryptCost)
+	if err != nil {
+		s.connErr(err)
+		return
+	}
+
 	for {
 		if err := c.SetDeadline(time.Now().Add(time.Second * 5)); err != nil {
 			s.connErr(err)
@@ -327,7 +335,7 @@ func (s *Server) conn(c net.Conn) {
 
 		frame = s.frameCount
 		w := &countWriter{n: 0, w: c}
-		err = crypto.Encrypt(bytes.NewBuffer(s.data), w, s.pass, 30, EncryptCost)
+		err = crypter.Encrypt(bytes.NewBuffer(s.data), w)
 		if err != nil {
 			s.connErr(err)
 			return
@@ -374,7 +382,9 @@ func (s *Server) Listen(output <-chan *bytes.Buffer) error {
 		if err != nil {
 			conn.Close()
 			s.connErr(err)
+			continue
 		}
+
 		go s.conn(conn)
 	}
 }
