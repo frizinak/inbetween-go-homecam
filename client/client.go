@@ -32,7 +32,12 @@ func (c *Client) connErr(err error) {
 	}
 }
 
-func (c *Client) Connect(data chan<- *bytes.Buffer) error {
+type Data struct {
+	*bytes.Buffer
+	Created time.Time
+}
+
+func (c *Client) Connect(data chan<- *Data) error {
 	for {
 		conn, err := net.Dial("tcp", c.addr)
 		if err != nil {
@@ -89,7 +94,7 @@ func (c *Client) Connect(data chan<- *bytes.Buffer) error {
 				break
 			}
 
-			data <- out
+			data <- &Data{Buffer: out, Created: time.Now()}
 		}
 
 		conn.Close()

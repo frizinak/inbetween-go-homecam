@@ -1,13 +1,13 @@
 package mobile
 
 import (
-	"bytes"
 	"image"
 	"image/draw"
 	"image/jpeg"
 	"log"
 	"time"
 
+	"github.com/frizinak/inbetween-go-homecam/client"
 	"golang.org/x/mobile/app"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
@@ -34,7 +34,8 @@ type View struct {
 		zoom         float64
 	}
 
-	bounds image.Rectangle
+	bounds       image.Rectangle
+	frameCreated time.Time
 
 	stopDecoder chan struct{}
 
@@ -56,7 +57,7 @@ func New(l *log.Logger) *View {
 	return v
 }
 
-func (v *View) initStage(glctx gl.Context, tick chan *bytes.Buffer) error {
+func (v *View) initStage(glctx gl.Context, tick chan *client.Data) error {
 	v.images = glutil.NewImages(glctx)
 
 	var origBounds image.Rectangle
@@ -74,6 +75,7 @@ func (v *View) initStage(glctx gl.Context, tick chan *bytes.Buffer) error {
 
 				b := i.Bounds()
 				v.bounds = b
+				v.frameCreated = data.Created
 				owidth := float64(b.Dx())
 				oheight := float64(b.Dy())
 				if origBounds != b || v.frame == nil {
@@ -112,7 +114,12 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 		return
 	}
 
-	glctx.ClearColor(0, 0, 0, 1)
+	var r, g, b float32
+	if time.Since(v.frameCreated) > time.Second {
+		r, g, b = 0.6, 0.2, 0.2
+	}
+
+	glctx.ClearColor(r, g, b, 1)
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
 
 	owidth := float64(v.bounds.Dx())
@@ -234,7 +241,7 @@ func (v *View) handleTouch(e touch.Event, sz size.Event) {
 	}
 }
 
-func (v *View) Start(tick chan *bytes.Buffer) {
+func (v *View) Start(tick chan *client.Data) {
 	app.Main(func(mobile app.App) {
 		var glctx gl.Context
 		var sz size.Event
