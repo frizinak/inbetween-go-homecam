@@ -14,6 +14,7 @@ type Config struct {
 	Address  string
 	Device   string
 	Password string
+	MaxPeers int
 	Quality  Quality
 }
 

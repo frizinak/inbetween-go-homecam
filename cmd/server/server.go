@@ -35,6 +35,7 @@ func main() {
 		[]byte(conf.Password),
 		conf.Device,
 		conf.Quality.ToServerConfig(),
+		conf.MaxPeers,
 	)
 	output, errs := s.Start()
 	go func() {

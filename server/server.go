@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"image/jpeg"
 	"io"
 	"log"
 	"net"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -43,7 +43,8 @@ type QualityConfig struct {
 type Server struct {
 	l *log.Logger
 
-	addr string
+	addr     string
+	maxPeers int
 
 	pass   []byte
 	secret []byte
@@ -76,6 +77,7 @@ func New(
 	pass []byte,
 	device string,
 	quality QualityConfig,
+	maxPeers int,
 ) *Server {
 	return &Server{
 		l:        l,
@@ -86,6 +88,7 @@ func New(
 		jpegOpts: &jpeg.Options{Quality: quality.MinJPEGQuality},
 		since:    time.Now(),
 		quality:  quality,
+		maxPeers: maxPeers,
 	}
 }
 
@@ -245,20 +248,26 @@ func (s *Server) addClient(amount int) {
 	s.sem.Unlock()
 }
 
-func (s *Server) addPeer(amount int) {
+func (s *Server) addPeer(amount int) error {
 	s.sem.Lock()
-	s.peers += amount
-	if s.peers%10 == 0 {
-		debug.FreeOSMemory()
+	if s.peers+amount > s.maxPeers {
+		s.sem.Unlock()
+		return fmt.Errorf("Max number of peers reached (%d)", s.maxPeers)
 	}
+
+	s.peers += amount
 	s.sem.Unlock()
+	return nil
 }
 
 func (s *Server) conn(c net.Conn) {
 	b := make([]byte, 1)
 	var frame uint64 = 0
 	defer c.Close()
-	s.addPeer(1)
+	if err := s.addPeer(1); err != nil {
+		s.connErr(err)
+		return
+	}
 	defer s.addPeer(-1)
 
 	if err := c.SetDeadline(time.Now().Add(time.Second * 5)); err != nil {
