@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/blackjack/webcam"
-	"github.com/frizinak/homecam/crypto"
+	"github.com/frizinak/inbetween-go-homecam/crypto"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -237,9 +237,6 @@ func (s *Server) addConn() {
 func (s *Server) removeConn() {
 	s.sem.Lock()
 	s.clients--
-	if s.clients < 0 {
-		panic("neg clients biatch")
-	}
 	s.sem.Unlock()
 }
 

@@ -7,8 +7,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	"github.com/frizinak/homecam/mobile"
-	"github.com/frizinak/homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/mobile"
+	"github.com/frizinak/inbetween-go-homecam/server"
 )
 
 func main() {

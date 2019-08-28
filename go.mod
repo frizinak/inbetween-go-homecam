@@ -1,4 +1,4 @@
-module github.com/frizinak/homecam
+module github.com/frizinak/inbetween-go-homecam
 
 go 1.12
 

@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/frizinak/homecam/crypto"
-	"github.com/frizinak/homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/crypto"
+	"github.com/frizinak/inbetween-go-homecam/server"
 	"golang.org/x/crypto/scrypt"
 )
 

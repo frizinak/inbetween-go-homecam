@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/frizinak/homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/server"
 )
 
 type Config struct {

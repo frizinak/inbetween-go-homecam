@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/frizinak/homecam/config"
-	"github.com/frizinak/homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/config"
+	"github.com/frizinak/inbetween-go-homecam/server"
 )
 
 func main() {

@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/frizinak/homecam/client"
-	"github.com/frizinak/homecam/config"
-	"github.com/frizinak/homecam/mobile"
+	"github.com/frizinak/inbetween-go-homecam/client"
+	"github.com/frizinak/inbetween-go-homecam/config"
+	"github.com/frizinak/inbetween-go-homecam/mobile"
 )
 
 var (
