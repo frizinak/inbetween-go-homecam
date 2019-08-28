@@ -38,18 +38,31 @@ type Data struct {
 }
 
 func (c *Client) Connect(data chan<- *Data) error {
+	var conn net.Conn
+	var connErr error
 	for {
-		conn, err := net.Dial("tcp", c.addr)
+		if conn != nil {
+			conn.Close()
+			if connErr != nil {
+				return connErr
+			}
+
+			time.Sleep(time.Second)
+		}
+
+		var err error
+		conn, err = net.Dial("tcp", c.addr)
 		if err != nil {
-			return err
+			continue
 		}
 
 		handshake := make([]byte, server.HandshakeLen)
-		if _, err := io.ReadFull(conn, handshake); err != nil {
-			return err
+		if _, connErr = io.ReadFull(conn, handshake); connErr != nil {
+			continue
 		}
 
-		handshakeHash, err := scrypt.Key(
+		var handshakeHash []byte
+		handshakeHash, connErr = scrypt.Key(
 			server.CommonSecret,
 			handshake,
 			1<<server.HandshakeCost,
@@ -57,29 +70,29 @@ func (c *Client) Connect(data chan<- *Data) error {
 			1,
 			server.HandshakeHashLen,
 		)
-		if err != nil {
-			return err
+		if connErr != nil {
+			continue
 		}
 
-		if _, err := conn.Write(handshakeHash); err != nil {
-			return err
+		if _, connErr = conn.Write(handshakeHash); connErr != nil {
+			continue
 		}
 
 		pass := append(handshakeHash, c.pass...)
 		crypter := crypto.NewImmutableKeyDecrypter(pass)
 		for {
-			if _, err := conn.Write(c.w); err != nil {
+			if _, err = conn.Write(c.w); err != nil {
 				c.connErr(err)
 				break
 			}
 			var ln uint64
-			if err := binary.Read(conn, binary.LittleEndian, &ln); err != nil {
+			if err = binary.Read(conn, binary.LittleEndian, &ln); err != nil {
 				c.connErr(err)
 				break
 			}
 
 			d := make([]byte, ln)
-			if _, err := io.ReadFull(conn, d); err != nil {
+			if _, err = io.ReadFull(conn, d); err != nil {
 				c.connErr(err)
 				break
 			}
@@ -89,7 +102,7 @@ func (c *Client) Connect(data chan<- *Data) error {
 			}
 
 			out := bytes.NewBuffer(make([]byte, 0, len(d)))
-			if err := crypter.Decrypt(bytes.NewBuffer(d), out); err != nil {
+			if err = crypter.Decrypt(bytes.NewBuffer(d), out); err != nil {
 				c.connErr(err)
 				break
 			}
@@ -97,7 +110,5 @@ func (c *Client) Connect(data chan<- *Data) error {
 			data <- &Data{Buffer: out, Created: time.Now()}
 		}
 
-		conn.Close()
-		time.Sleep(time.Second)
 	}
 }
