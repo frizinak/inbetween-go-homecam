@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -61,6 +62,7 @@ type Server struct {
 
 	sem        sync.Mutex
 	clients    int
+	peers      int
 	bytes      uint64
 	since      time.Time
 	throughput float64
@@ -237,15 +239,18 @@ func (s *Server) addBytes(bytes uint64) {
 	s.sem.Unlock()
 }
 
-func (s *Server) addConn() {
+func (s *Server) addClient(amount int) {
 	s.sem.Lock()
-	s.clients++
+	s.clients += amount
 	s.sem.Unlock()
 }
 
-func (s *Server) removeConn() {
+func (s *Server) addPeer(amount int) {
 	s.sem.Lock()
-	s.clients--
+	s.peers += amount
+	if s.peers%10 == 0 {
+		debug.FreeOSMemory()
+	}
 	s.sem.Unlock()
 }
 
@@ -253,6 +258,8 @@ func (s *Server) conn(c net.Conn) {
 	b := make([]byte, 1)
 	var frame uint64 = 0
 	defer c.Close()
+	s.addPeer(1)
+	defer s.addPeer(-1)
 
 	if err := c.SetDeadline(time.Now().Add(time.Second * 5)); err != nil {
 		s.connErr(err)
@@ -294,8 +301,8 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
-	s.addConn()
-	defer s.removeConn()
+	s.addClient(1)
+	defer s.addClient(-1)
 	s.l.Println("New client", c.RemoteAddr())
 
 	pass := append(handshakeHash, s.pass...)
