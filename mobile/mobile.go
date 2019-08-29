@@ -110,10 +110,6 @@ func (v *View) destroyStage(glctx gl.Context) {
 }
 
 func (v *View) paint(glctx gl.Context, sz size.Event) {
-	if v.frame == nil {
-		return
-	}
-
 	var r, g, b float32
 	if time.Since(v.frameCreated) > time.Second {
 		r, g, b = 0.6, 0.2, 0.2
@@ -121,6 +117,10 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 
 	glctx.ClearColor(r, g, b, 1)
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
+
+	if v.frame == nil {
+		return
+	}
 
 	owidth := float64(v.bounds.Dx())
 	oheight := float64(v.bounds.Dy())
