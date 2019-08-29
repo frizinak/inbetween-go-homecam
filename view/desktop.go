@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/exp/shiny/driver/gldriver"
 	"golang.org/x/exp/shiny/screen"
+	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/mouse"
 	"golang.org/x/mobile/event/touch"
 )
@@ -15,9 +16,8 @@ type desktopWindow struct {
 	screen.Window
 }
 
-func (d *desktopWindow) Publish() {
-	d.Window.Publish()
-}
+func (d *desktopWindow) Publish()                     { d.Window.Publish() }
+func (d *desktopWindow) RequiresViewportUpdate() bool { return true }
 
 func (v *View) Start(tick chan Reader) {
 	gldriver.Main(func(s screen.Screen) {
@@ -30,11 +30,16 @@ func (v *View) Start(tick chan Reader) {
 		events := make(chan interface{})
 		go func() {
 			for {
-				events <- w.NextEvent()
+				e := w.NextEvent()
+				events <- e
+				if c, ok := e.(lifecycle.Event); ok && c.To == lifecycle.StageDead {
+					close(events)
+					break
+				}
 			}
 		}()
 
-		v.loop(&desktopWindow{w}, events, convert, tick)
+		v.loop(&desktopWindow{Window: w}, events, convert, tick)
 	})
 }
 

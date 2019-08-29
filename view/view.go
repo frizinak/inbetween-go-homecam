@@ -241,11 +241,13 @@ type filter func(interface{}) interface{}
 type window interface {
 	Send(event interface{})
 	Publish()
+	RequiresViewportUpdate() bool
 }
 
 func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Reader) {
 	var glctx gl.Context
 	var sz size.Event
+	vpUpdate := w.RequiresViewportUpdate()
 	for e := range events {
 		switch e := f(e).(type) {
 		case lifecycle.Event:
@@ -262,6 +264,9 @@ func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Rea
 			v.handleTouch(e, sz)
 		case size.Event:
 			sz = e
+			if vpUpdate && glctx != nil {
+				glctx.Viewport(0, 0, sz.WidthPx, sz.HeightPx)
+			}
 		case paint.Event:
 			if glctx == nil || e.External {
 				continue
