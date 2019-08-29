@@ -92,12 +92,25 @@ func New(
 	}
 }
 
-func (s *Server) initCam() error {
+func (s *Server) initCam() {
+	var last time.Time
+	for {
+		err := s.tryInitCam()
+		if err == nil {
+			break
+		}
+
+		if time.Since(last) > time.Second*10 {
+			last = time.Now()
+			s.l.Printf("Initiating cam failed: %s, will keep trying", err)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func (s *Server) tryInitCam() error {
 	var err error
 	if s.cam != nil {
-		if err = s.cam.StopStreaming(); err != nil {
-			return err
-		}
 		if err = s.cam.Close(); err != nil {
 			return err
 		}
@@ -108,9 +121,8 @@ func (s *Server) initCam() error {
 		return err
 	}
 
-	// todo cache
 	formats := s.cam.GetSupportedFormats()
-
+	// TODO
 	// get first one for now
 	var pix webcam.PixelFormat
 	for i := range formats {
@@ -333,7 +345,7 @@ func (s *Server) conn(c net.Conn) {
 			return
 		}
 
-		for frame == s.frameCount {
+		if frame == s.frameCount {
 			w := &countWriter{n: 0, w: c}
 			if _, err = w.Write([]byte{0, 0, 0}); err != nil {
 				s.connErr(err)
@@ -414,10 +426,7 @@ func (s *Server) Start() (<-chan *bytes.Buffer, <-chan error) {
 		for {
 			if s.reinitCam {
 				s.reinitCam = false
-				if err := s.initCam(); err != nil {
-					errs <- err
-					return
-				}
+				s.initCam()
 			}
 
 			err := s.cam.WaitForFrame(1)
@@ -426,8 +435,9 @@ func (s *Server) Start() (<-chan *bytes.Buffer, <-chan error) {
 			case *webcam.Timeout:
 				continue
 			default:
-				errs <- err
-				return
+				s.l.Printf("Failed waiting for cam frame: %s", err)
+				s.reinitCam = true
+				continue
 			}
 
 			if time.Since(last) < time.Second/time.Duration(s.fps) {
@@ -437,8 +447,9 @@ func (s *Server) Start() (<-chan *bytes.Buffer, <-chan error) {
 
 			_d, err := s.cam.ReadFrame()
 			if err != nil {
-				errs <- err
-				return
+				s.l.Printf("Failed reading cam frame: %s", err)
+				s.reinitCam = true
+				continue
 			}
 			d := make([]byte, len(_d))
 			copy(d, _d)
