@@ -7,8 +7,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	"github.com/frizinak/inbetween-go-homecam/mobile"
 	"github.com/frizinak/inbetween-go-homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/view"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 		DesiredClientThroughput: 1e16,
 	}
 
-	s := server.New(l, "", []byte{}, "/dev/video0", qual)
+	s := server.New(l, "", []byte{}, "/dev/video0", qual, 100)
 	output, errs := s.Start()
 	tick := make(chan *bytes.Buffer)
 	var img *bytes.Buffer
@@ -49,6 +49,6 @@ func main() {
 
 	}()
 
-	v := mobile.New(l)
+	v := view.New(l)
 	v.Start(tick)
 }

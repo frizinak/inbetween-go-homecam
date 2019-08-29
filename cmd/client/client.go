@@ -6,7 +6,7 @@ import (
 
 	"github.com/frizinak/inbetween-go-homecam/client"
 	"github.com/frizinak/inbetween-go-homecam/config"
-	"github.com/frizinak/inbetween-go-homecam/mobile"
+	"github.com/frizinak/inbetween-go-homecam/view"
 )
 
 var (
@@ -31,7 +31,7 @@ func main() {
 	}
 
 	l := log.New(os.Stderr, "", 0)
-	v := mobile.New(l)
+	v := view.New(l)
 	c := client.New(l, conf.Address, []byte(conf.Password))
 	tick := make(chan *client.Data)
 	go func() {

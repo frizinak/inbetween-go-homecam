@@ -1,4 +1,6 @@
-package mobile
+// +build android ios linux
+
+package view
 
 import (
 	"image"
