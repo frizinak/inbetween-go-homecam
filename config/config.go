@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/frizinak/inbetween-go-homecam/server"
 )
 
 type Config struct {
@@ -34,21 +32,14 @@ type Quality struct {
 	MaxHeight int
 }
 
-func (q Quality) ToServerConfig() server.QualityConfig {
-	return server.QualityConfig{
-		MinFPS: q.MinFPS,
-		MaxFPS: q.MaxFPS,
-
-		MinJPEGQuality: q.MinJPEGQuality,
-		MaxJPEGQuality: q.MaxJPEGQuality,
-
-		DesiredTotalThroughput:  q.MaxKilobytesPerSecond * 1024,
-		DesiredClientThroughput: q.MaxKilobytesPerSecondPerClient * 1024,
-
-		MinResolution: q.MinWidth * q.MinHeight,
-		MaxResolution: q.MaxWidth * q.MaxHeight,
-	}
-}
+func (q Quality) MinimumFPS() int                  { return q.MinFPS }
+func (q Quality) MaximumFPS() int                  { return q.MaxFPS }
+func (q Quality) MinimumJPEGQuality() int          { return q.MinJPEGQuality }
+func (q Quality) MaximumJPEGQuality() int          { return q.MaxJPEGQuality }
+func (q Quality) DesiredTotalThroughput() float64  { return q.MaxKilobytesPerSecond * 1024 }
+func (q Quality) DesiredClientThroughput() float64 { return q.MaxKilobytesPerSecondPerClient * 1024 }
+func (q Quality) MinimumResolution() int           { return q.MinWidth * q.MinHeight }
+func (q Quality) MaximumResolution() int           { return q.MaxWidth * q.MaxHeight }
 
 func DefaultConfigFile() (string, error) {
 	home, err := os.UserHomeDir()

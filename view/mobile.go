@@ -1,5 +1,3 @@
-// +build android ios linux
-
 package view
 
 import (
@@ -20,7 +18,7 @@ import (
 	"golang.org/x/mobile/gl"
 )
 
-const TouchTypeNone = 100
+const touchTypeNone = 100
 
 type View struct {
 	l      *log.Logger
@@ -54,8 +52,8 @@ type View struct {
 
 func New(l *log.Logger) *View {
 	v := &View{l: l, stopDecoder: make(chan struct{})}
-	v.touch.lastBegin.Type = TouchTypeNone
-	v.touch.lastBegin2.Type = TouchTypeNone
+	v.touch.lastBegin.Type = touchTypeNone
+	v.touch.lastBegin2.Type = touchTypeNone
 	return v
 }
 
@@ -197,18 +195,18 @@ func (v *View) handleTouch(e touch.Event, sz size.Event) {
 		v.touch.pinchingIntent = false
 		switch e.Sequence {
 		case 0:
-			v.touch.lastBegin.Type = TouchTypeNone
+			v.touch.lastBegin.Type = touchTypeNone
 			v.touch.moving = false
 		case 1:
-			v.touch.lastBegin2.Type = TouchTypeNone
+			v.touch.lastBegin2.Type = touchTypeNone
 		}
 
 	case touch.TypeMove:
-		if v.touch.lastBegin.Type == TouchTypeNone {
+		if v.touch.lastBegin.Type == touchTypeNone {
 			return
 		}
 
-		if v.touch.lastBegin2.Type == TouchTypeNone {
+		if v.touch.lastBegin2.Type == touchTypeNone {
 			if v.touch.moving || TouchDistance(e, v.touch.lastBegin) > 50 {
 				v.touch.moving = true
 				v.framePos.offsetX += float64(e.X - v.touch.lastBegin.X)

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"image/jpeg"
@@ -15,16 +16,8 @@ import (
 
 	"github.com/blackjack/webcam"
 	"github.com/frizinak/inbetween-go-homecam/crypto"
+	"github.com/frizinak/inbetween-go-homecam/vars"
 	"golang.org/x/crypto/scrypt"
-)
-
-var CommonSecret = []byte("HelloThereCamServer")
-
-const (
-	EncryptCost      = 17
-	HandshakeCost    = 15
-	HandshakeLen     = 128
-	HandshakeHashLen = 256
 )
 
 type Resolution struct {
@@ -36,7 +29,21 @@ func (r Resolution) Resolution() uint32 {
 	return r.width * r.height
 }
 
-type QualityConfig struct {
+type Config interface {
+	MinimumFPS() int
+	MaximumFPS() int
+
+	MinimumJPEGQuality() int
+	MaximumJPEGQuality() int
+
+	DesiredTotalThroughput() float64
+	DesiredClientThroughput() float64
+
+	MinimumResolution() int
+	MaximumResolution() int
+}
+
+type qualityConfig struct {
 	MinFPS int
 	MaxFPS int
 
@@ -82,7 +89,7 @@ type Server struct {
 	lastResolutionAdjustment time.Time
 	lastAdjustment           time.Time
 
-	quality QualityConfig
+	quality qualityConfig
 }
 
 func New(
@@ -90,14 +97,25 @@ func New(
 	addr string,
 	pass []byte,
 	device string,
-	quality QualityConfig,
+	quality Config,
 	maxPeers int,
 ) *Server {
+	q := qualityConfig{
+		MinFPS:                  quality.MinimumFPS(),
+		MaxFPS:                  quality.MaximumFPS(),
+		MinJPEGQuality:          quality.MinimumJPEGQuality(),
+		MaxJPEGQuality:          quality.MaximumJPEGQuality(),
+		DesiredTotalThroughput:  quality.DesiredTotalThroughput(),
+		DesiredClientThroughput: quality.DesiredClientThroughput(),
+		MinResolution:           quality.MinimumResolution(),
+		MaxResolution:           quality.MaximumResolution(),
+	}
+
 	s := &Server{
 		l:        l,
-		fps:      quality.MaxFPS,
-		jpegOpts: &jpeg.Options{Quality: quality.MaxJPEGQuality},
-		quality:  quality,
+		fps:      q.MaxFPS,
+		jpegOpts: &jpeg.Options{Quality: q.MaxJPEGQuality},
+		quality:  q,
 	}
 
 	s.cam.device = device
@@ -350,19 +368,24 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
-	handshake := make([]byte, HandshakeLen)
+	handshake := make([]byte, vars.HandshakeLen)
 	if _, err := rand.Read(handshake); err != nil {
 		s.connErr(err)
 		return
 	}
 
+	common := make([]byte, len(vars.CommonSecret))
+	copy(common, vars.CommonSecret)
+	common = append(common, s.net.pass...)
+	hash := sha512.Sum512(common)
+
 	handshakeHash, err := scrypt.Key(
-		CommonSecret,
+		hash[:],
 		handshake,
-		1<<HandshakeCost,
+		1<<vars.HandshakeCost,
 		8,
 		1,
-		HandshakeHashLen,
+		vars.HandshakeHashLen,
 	)
 	if err != nil {
 		s.connErr(err)
@@ -374,7 +397,7 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
-	remoteHandshakeHash := make([]byte, HandshakeHashLen)
+	remoteHandshakeHash := make([]byte, vars.HandshakeHashLen)
 	if _, err := io.ReadFull(c, remoteHandshakeHash); err != nil {
 		s.connErr(err)
 		return
@@ -390,7 +413,7 @@ func (s *Server) conn(c net.Conn) {
 	s.l.Println("New client", c.RemoteAddr())
 
 	pass := append(handshakeHash, s.net.pass...)
-	crypter, err := crypto.NewImmutableKeyEncrypter(pass, 60, EncryptCost)
+	crypter, err := crypto.NewImmutableKeyEncrypter(pass, 60, vars.EncryptCost)
 	if err != nil {
 		s.connErr(err)
 		return

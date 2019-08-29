@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/binary"
 	"io"
 	"log"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/frizinak/inbetween-go-homecam/crypto"
-	"github.com/frizinak/inbetween-go-homecam/server"
+	"github.com/frizinak/inbetween-go-homecam/vars"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -56,19 +57,24 @@ func (c *Client) Connect(data chan<- *Data) error {
 			continue
 		}
 
-		handshake := make([]byte, server.HandshakeLen)
+		handshake := make([]byte, vars.HandshakeLen)
 		if _, connErr = io.ReadFull(conn, handshake); connErr != nil {
 			continue
 		}
 
+		common := make([]byte, len(vars.CommonSecret))
+		copy(common, vars.CommonSecret)
+		common = append(common, c.pass...)
+		hash := sha512.Sum512(common)
+
 		var handshakeHash []byte
 		handshakeHash, connErr = scrypt.Key(
-			server.CommonSecret,
+			hash[:],
 			handshake,
-			1<<server.HandshakeCost,
+			1<<vars.HandshakeCost,
 			8,
 			1,
-			server.HandshakeHashLen,
+			vars.HandshakeHashLen,
 		)
 		if connErr != nil {
 			continue

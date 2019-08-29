@@ -3,12 +3,18 @@ SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' \))
 dist/client.apk: vendor $(SRC) | dist
 	gomobile build -target=android/arm64 -o $@ ./cmd/client
 
-.PHONY: install-client
-install-client: vendor $(SRC)
-	gomobile install -tags production -target=android/arm64 ./cmd/client
+.PHONY: all
+all: dist/client.apk dist/native-server dist/native-client
+
+.PHONY: install-mobile-client
+install-mobile-client: vendor $(SRC)
+	gomobile install -tags 'production' -target=android/arm64 ./cmd/client
 
 dist/native-client: vendor $(SRC) | dist
-	go build -tags production -o $@ ./cmd/client
+	go build -tags 'production' -o $@ ./cmd/client
+
+dist/native-server: vendor $(SRC) | dist
+	go build -o $@ ./cmd/server
 
 vendor: $(SRC) go.mod go.sum
 	GO111MODULE=on go mod vendor
@@ -21,7 +27,7 @@ dist:
 
 .PHONY: run-client
 run-client: vendor
-	go run -tags production ./cmd/client
+	go run -tags 'production' ./cmd/client
 
 .PHONY: run-server
 run-server: vendor
@@ -34,9 +40,5 @@ run-direct: vendor
 .PHONY: stress-client
 stress-client: vendor
 	for i in $$(seq 1 10); do \
-		go run -tags production ./cmd/client & \
+		go run -tags 'production' ./cmd/client & \
 	done; wait;
-
-.PHONY: run-built-client
-run-built-client: dist/native-client
-	./$<
