@@ -22,7 +22,7 @@ var CommonSecret = []byte("HelloThereCamServer")
 
 const (
 	EncryptCost      = 17
-	HandshakeCost    = 12
+	HandshakeCost    = 15
 	HandshakeLen     = 128
 	HandshakeHashLen = 256
 )
@@ -67,9 +67,10 @@ type Server struct {
 		resolutions []webcam.FrameSize
 	}
 
-	frameCount uint64
-	fps        int
-	jpegOpts   *jpeg.Options
+	frameCount     uint64
+	fps            int
+	jpegOpts       *jpeg.Options
+	lastAdjustment time.Time
 
 	quality QualityConfig
 }
@@ -85,7 +86,7 @@ func New(
 	s := &Server{
 		l:        l,
 		fps:      quality.MaxFPS,
-		jpegOpts: &jpeg.Options{Quality: quality.MinJPEGQuality},
+		jpegOpts: &jpeg.Options{Quality: quality.MaxJPEGQuality},
 		quality:  quality,
 	}
 
@@ -184,7 +185,14 @@ func (s *Server) addBytes(bytes uint64) {
 	s.sem.Lock()
 	s.net.bytes += bytes
 	since := time.Since(s.net.since).Seconds()
-	if since > 3 {
+	iv := 3.0
+
+	if time.Since(s.lastAdjustment).Seconds() < 2*iv {
+		s.sem.Unlock()
+		return
+	}
+
+	if since > iv {
 		throughput := float64(s.net.bytes) / since
 		s.net.since = time.Now()
 		s.net.bytes = 0
@@ -202,21 +210,25 @@ func (s *Server) addBytes(bytes uint64) {
 		factor := throughput / desired
 		if factor < 0.01 {
 			factor = 0.01
-		} else if factor > 5 {
-			factor = 5
+		} else if factor > 20 {
+			factor = 20
 		}
 
-		if factor > 1.05 && s.fps == s.quality.MinFPS && s.jpegOpts.Quality == s.quality.MinJPEGQuality {
+		switch {
+
+		case factor > 1.05 && s.fps == s.quality.MinFPS && s.jpegOpts.Quality == s.quality.MinJPEGQuality:
 			s.cam.activeRes++
-		} else if factor < 0.9 && s.fps == s.quality.MaxFPS && s.jpegOpts.Quality == s.quality.MaxJPEGQuality {
+
+		case factor < 0.9 && s.fps == s.quality.MaxFPS && s.jpegOpts.Quality == s.quality.MaxJPEGQuality:
 			s.cam.activeRes--
-		} else if factor > 1.05 {
+
+		case factor > 1.05:
+			s.fps /= int(factor)
 			if s.fps <= s.quality.MinFPS+(s.quality.MaxFPS-s.quality.MinFPS)/2 {
 				s.jpegOpts.Quality = int(float64(s.jpegOpts.Quality) / factor)
 			}
-			//s.fps = int(float64(s.fps) / (factor / 2))
-			s.fps -= int(factor)
-		} else if factor < 0.9 {
+
+		case factor < 0.9:
 			if s.fps <= s.quality.MinFPS+(s.quality.MaxFPS-s.quality.MinFPS)/2 ||
 				s.jpegOpts.Quality >= s.quality.MaxJPEGQuality {
 				s.fps++
@@ -250,6 +262,7 @@ func (s *Server) addBytes(bytes uint64) {
 		if s.fps != oFPS ||
 			s.jpegOpts.Quality != oQuality ||
 			oActiveRes != s.cam.activeRes {
+			s.lastAdjustment = time.Now()
 			s.l.Printf(
 				"%.1fkB/s throughput => Quality adjustment: %dx%d @ %dfps (jpeg: %d)",
 				throughput/1024,
