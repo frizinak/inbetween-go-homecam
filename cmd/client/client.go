@@ -32,7 +32,7 @@ func main() {
 
 	l := log.New(os.Stderr, "", 0)
 	v := mobile.New(l)
-	c := client.New(l, conf.Address, []byte(conf.Password))
+	c := client.New(l, conf.Address, []byte(conf.Password), 100*1024)
 	tick := make(chan *client.Data)
 	go func() {
 		l.Fatal(c.Connect(tick))

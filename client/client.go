@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -18,12 +19,22 @@ type Client struct {
 	addr string
 	pass []byte
 
-	w    []byte
-	ping []byte
+	w []byte
+
+	bytesRead int
+	since     time.Time
+
+	maxThroughput int
 }
 
-func New(l *log.Logger, addr string, pass []byte) *Client {
-	return &Client{l, addr, pass, []byte{0}, []byte{10}}
+func New(l *log.Logger, addr string, pass []byte, maxThroughput int) *Client {
+	return &Client{
+		l:             l,
+		addr:          addr,
+		pass:          pass,
+		w:             []byte{0},
+		maxThroughput: maxThroughput,
+	}
 }
 
 func (c *Client) connErr(err error) {
@@ -80,7 +91,31 @@ func (c *Client) Connect(data chan<- *Data) error {
 
 		pass := append(handshakeHash, c.pass...)
 		crypter := crypto.NewImmutableKeyDecrypter(pass)
+
+		c.since = time.Now()
+		sleepTime := time.Duration(0)
 		for {
+			since := time.Since(c.since).Seconds()
+			if since > 3 {
+				throughput := int(float64(c.bytesRead) / since)
+				c.since = time.Now()
+				c.bytesRead = 0
+
+				if throughput > c.maxThroughput {
+					sleepTime += time.Millisecond * 20
+				} else if throughput < 4*c.maxThroughput/5 {
+					sleepTime -= time.Millisecond * 50
+					if sleepTime < 0 {
+						sleepTime = 0
+					}
+				}
+				fmt.Println(throughput/1024, sleepTime)
+			}
+
+			if sleepTime != 0 {
+				time.Sleep(sleepTime)
+			}
+
 			if _, err = conn.Write(c.w); err != nil {
 				c.connErr(err)
 				break
@@ -106,6 +141,8 @@ func (c *Client) Connect(data chan<- *Data) error {
 				c.connErr(err)
 				break
 			}
+
+			c.bytesRead += out.Len()
 
 			data <- &Data{Buffer: out, Created: time.Now()}
 		}
