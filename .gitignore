@@ -1,4 +1,5 @@
-/credentials
+/cmd/client/credentials.go
 /run-built-client
 /client.apk
 /vendor
+/dist

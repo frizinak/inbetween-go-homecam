@@ -1,14 +1,14 @@
-SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' -o -name 'credentials' \))
+SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' \))
 
-client.apk: vendor $(SRC) credentials
-	@gomobile build -ldflags "$(shell cat credentials)"  -o $@ ./cmd/client
+dist/client.apk: vendor $(SRC) | dist
+	gomobile build -target=android/arm64 -o $@ ./cmd/client
 
 .PHONY: install-client
-install-client: vendor credentials
-	@gomobile install -ldflags '$(shell cat credentials)' ./cmd/client
+install-client: vendor $(SRC)
+	gomobile install -tags production -target=android/arm64 ./cmd/client
 
-credentials: | credentials.example
-	cp credentials.example $@
+dist/native-client: vendor $(SRC) | dist
+	go build -tags production -o $@ ./cmd/client
 
 vendor: $(SRC) go.mod go.sum
 	GO111MODULE=on go mod vendor
@@ -16,9 +16,12 @@ vendor: $(SRC) go.mod go.sum
 go.sum:
 	touch go.sum
 
+dist:
+	@mkdir dist 2>/dev/null
+
 .PHONY: run-client
 run-client: vendor
-	go run ./cmd/client
+	go run -tags production ./cmd/client
 
 .PHONY: run-server
 run-server: vendor
@@ -31,11 +34,9 @@ run-direct: vendor
 .PHONY: stress-client
 stress-client: vendor
 	for i in $$(seq 1 10); do \
-		go run ./cmd/client & \
+		go run -tags production ./cmd/client & \
 	done; wait;
 
 .PHONY: run-built-client
-run-built-client: vendor credentials
-	@go build -ldflags '$(shell cat credentials)' -o $@ ./cmd/client
-	./$@
-
+run-built-client: dist/native-client
+	./$<

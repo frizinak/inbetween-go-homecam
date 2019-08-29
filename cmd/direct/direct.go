@@ -6,7 +6,9 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"time"
 
+	"github.com/frizinak/inbetween-go-homecam/client"
 	"github.com/frizinak/inbetween-go-homecam/server"
 	"github.com/frizinak/inbetween-go-homecam/view"
 )
@@ -31,7 +33,7 @@ func main() {
 
 	s := server.New(l, "", []byte{}, "/dev/video0", qual, 100)
 	output, errs := s.Start()
-	tick := make(chan *bytes.Buffer)
+	tick := make(chan *client.Data)
 	var img *bytes.Buffer
 	go func() {
 		for {
@@ -41,7 +43,7 @@ func main() {
 			case b := <-output:
 				img = b
 				select {
-				case tick <- b:
+				case tick <- &client.Data{Buffer: b, Created: time.Now()}:
 				default:
 				}
 			}
