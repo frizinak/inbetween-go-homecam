@@ -90,6 +90,8 @@ type Server struct {
 	lastAdjustment           time.Time
 
 	quality qualityConfig
+
+	scryptRatelimit chan struct{}
 }
 
 func New(
@@ -112,10 +114,11 @@ func New(
 	}
 
 	s := &Server{
-		l:        l,
-		fps:      q.MaxFPS,
-		jpegOpts: &jpeg.Options{Quality: q.MaxJPEGQuality},
-		quality:  q,
+		l:               l,
+		fps:             q.MaxFPS,
+		jpegOpts:        &jpeg.Options{Quality: q.MaxJPEGQuality},
+		quality:         q,
+		scryptRatelimit: make(chan struct{}, 1),
 	}
 
 	s.cam.device = device
@@ -374,11 +377,23 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
+	if _, err := c.Write(handshake); err != nil {
+		s.connErr(err)
+		return
+	}
+
+	remoteHandshakeHash := make([]byte, vars.HandshakeHashLen)
+	if _, err := io.ReadFull(c, remoteHandshakeHash); err != nil {
+		s.connErr(err)
+		return
+	}
+
 	common := make([]byte, len(vars.CommonSecret))
 	copy(common, vars.CommonSecret)
 	common = append(common, s.net.pass...)
 	hash := sha512.Sum512(common)
 
+	s.scryptRatelimit <- struct{}{}
 	handshakeHash, err := scrypt.Key(
 		hash[:],
 		handshake,
@@ -387,18 +402,8 @@ func (s *Server) conn(c net.Conn) {
 		1,
 		vars.HandshakeHashLen,
 	)
+	<-s.scryptRatelimit
 	if err != nil {
-		s.connErr(err)
-		return
-	}
-
-	if _, err := c.Write(handshake); err != nil {
-		s.connErr(err)
-		return
-	}
-
-	remoteHandshakeHash := make([]byte, vars.HandshakeHashLen)
-	if _, err := io.ReadFull(c, remoteHandshakeHash); err != nil {
 		s.connErr(err)
 		return
 	}
