@@ -7,7 +7,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/frizinak/inbetween-go-homecam/client"
 	"golang.org/x/mobile/app"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
@@ -57,7 +56,7 @@ func New(l *log.Logger) *View {
 	return v
 }
 
-func (v *View) initStage(glctx gl.Context, tick chan *client.Data) error {
+func (v *View) initStage(glctx gl.Context, tick chan Reader) error {
 	v.images = glutil.NewImages(glctx)
 
 	var origBounds image.Rectangle
@@ -75,7 +74,7 @@ func (v *View) initStage(glctx gl.Context, tick chan *client.Data) error {
 
 				b := i.Bounds()
 				v.bounds = b
-				v.frameCreated = data.Created
+				v.frameCreated = data.Created()
 				owidth := float64(b.Dx())
 				oheight := float64(b.Dy())
 				if origBounds != b || v.frame == nil {
@@ -241,7 +240,7 @@ func (v *View) handleTouch(e touch.Event, sz size.Event) {
 	}
 }
 
-func (v *View) Start(tick chan *client.Data) {
+func (v *View) Start(tick chan Reader) {
 	app.Main(func(mobile app.App) {
 		var glctx gl.Context
 		var sz size.Event

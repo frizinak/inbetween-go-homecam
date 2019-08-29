@@ -35,8 +35,10 @@ func (c *Client) connErr(err error) {
 
 type Data struct {
 	*bytes.Buffer
-	Created time.Time
+	created time.Time
 }
+
+func (d *Data) Created() time.Time { return d.created }
 
 func (c *Client) Connect(data chan<- *Data) error {
 	var conn net.Conn
@@ -113,7 +115,7 @@ func (c *Client) Connect(data chan<- *Data) error {
 				break
 			}
 
-			data <- &Data{Buffer: out, Created: time.Now()}
+			data <- &Data{Buffer: out, created: time.Now()}
 		}
 
 	}

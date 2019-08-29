@@ -18,9 +18,17 @@ func main() {
 	l := log.New(os.Stderr, "", 0)
 	v := view.New(l)
 	c := client.New(l, conf.Address, []byte(conf.Password))
-	tick := make(chan *client.Data)
+	tickIn := make(chan view.Reader)
+	tickOut := make(chan *client.Data)
+
 	go func() {
-		l.Fatal(c.Connect(tick))
+		for {
+			tickIn <- <-tickOut
+		}
 	}()
-	v.Start(tick)
+
+	go func() {
+		l.Fatal(c.Connect(tickOut))
+	}()
+	v.Start(tickIn)
 }
