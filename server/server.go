@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -131,7 +132,6 @@ func (s *Server) tryInitCam() error {
 	}
 
 	if s.resolutions == nil {
-		// todo assume sorted
 		sizes := s.cam.GetSupportedFrameSizes(pix)
 		s.resolutions = make([]webcam.FrameSize, 0, len(sizes))
 		for i := range sizes {
@@ -150,6 +150,10 @@ func (s *Server) tryInitCam() error {
 			return errors.New("No resolutions found, try adjusting the min/max requirments")
 		}
 
+		sort.Slice(s.resolutions, func(i, j int) bool {
+			a, b := s.resolutions[i], s.resolutions[j]
+			return a.MaxWidth*a.MinHeight > b.MaxWidth*b.MinHeight
+		})
 	}
 
 	_, _, _, err = s.cam.SetImageFormat(
