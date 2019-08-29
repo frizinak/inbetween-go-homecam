@@ -1,17 +1,26 @@
 SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' \))
 
 dist/client.apk: vendor $(SRC) | dist
-	gomobile build -target=android/arm64 -o $@ ./cmd/client
+	gomobile build -tags 'production mobile' -target=android/arm64 -o $@ ./cmd/client
 
 .PHONY: all
-all: dist/client.apk dist/native-server dist/native-client
+all: dist/client.apk \
+	dist/native-server \
+	dist/linux-client \
+	dist/windows-client.exe
 
 .PHONY: install-mobile-client
 install-mobile-client: vendor $(SRC)
-	gomobile install -tags 'production' -target=android/arm64 ./cmd/client
+	gomobile install -tags 'production mobile' -target=android/arm64 ./cmd/client
 
-dist/native-client: vendor $(SRC) | dist
-	go build -tags 'production' -o $@ ./cmd/client
+dist/osx-client: vendor $(SRC) | dist
+	GOOS=darwin GOARCH=amd64 go build -tags 'production' -o $@ ./cmd/client
+
+dist/linux-client: vendor $(SRC) | dist
+	GOOS=linux GOARCH=amd64 go build -tags 'production' -o $@ ./cmd/client
+
+dist/windows-client.exe: vendor $(SRC) | dist
+	GOOS=windows GOARCH=amd64 go build -tags 'production' -o $@ ./cmd/client
 
 dist/native-server: vendor $(SRC) | dist
 	go build -o $@ ./cmd/server
@@ -25,8 +34,12 @@ go.sum:
 dist:
 	@mkdir dist 2>/dev/null
 
-.PHONY: run-client
-run-client: vendor
+.PHONY: run-mobile-client
+run-mobile-client: vendor
+	go run -tags 'production mobile' ./cmd/client
+
+.PHONY: run-desktop-client
+run-desktop-client: vendor
 	go run -tags 'production' ./cmd/client
 
 .PHONY: run-server
