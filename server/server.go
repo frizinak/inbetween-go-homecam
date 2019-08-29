@@ -27,6 +27,15 @@ const (
 	HandshakeHashLen = 256
 )
 
+type Resolution struct {
+	width  uint32
+	height uint32
+}
+
+func (r Resolution) Resolution() uint32 {
+	return r.width * r.height
+}
+
 type QualityConfig struct {
 	MinFPS int
 	MaxFPS int
@@ -64,13 +73,14 @@ type Server struct {
 		device      string
 		cam         *webcam.Webcam
 		activeRes   int
-		resolutions []webcam.FrameSize
+		resolutions []Resolution
 	}
 
-	frameCount     uint64
-	fps            int
-	jpegOpts       *jpeg.Options
-	lastAdjustment time.Time
+	frameCount               uint64
+	fps                      int
+	jpegOpts                 *jpeg.Options
+	lastResolutionAdjustment time.Time
+	lastAdjustment           time.Time
 
 	quality QualityConfig
 }
@@ -139,33 +149,40 @@ func (s *Server) tryInitCam() error {
 
 	if s.cam.resolutions == nil {
 		sizes := s.cam.cam.GetSupportedFrameSizes(pix)
-		s.cam.resolutions = make([]webcam.FrameSize, 0, len(sizes))
+		s.cam.resolutions = make([]Resolution, 0, len(sizes))
 		for i := range sizes {
 			res := int(sizes[i].MaxWidth * sizes[i].MinHeight)
 			if res < s.quality.MinResolution || res > s.quality.MaxResolution {
 				continue
 			}
-			s.cam.resolutions = append(s.cam.resolutions, sizes[i])
+			s.cam.resolutions = append(
+				s.cam.resolutions,
+				Resolution{sizes[i].MaxWidth, sizes[i].MinHeight},
+			)
 		}
-		s.cam.activeRes = 0
+		s.cam.activeRes = len(s.cam.resolutions) - 1
 
 		if len(s.cam.resolutions) == 0 {
 			for i := range sizes {
-				s.l.Printf("%dx%d = %d", sizes[i].MaxWidth, sizes[i].MinHeight, sizes[i].MaxWidth*sizes[i].MinHeight)
+				s.l.Printf(
+					"%dx%d = %d",
+					sizes[i].MaxWidth,
+					sizes[i].MinHeight,
+					sizes[i].MaxWidth*sizes[i].MinHeight,
+				)
 			}
 			return errors.New("No resolutions found, try adjusting the min/max requirments")
 		}
 
 		sort.Slice(s.cam.resolutions, func(i, j int) bool {
-			a, b := s.cam.resolutions[i], s.cam.resolutions[j]
-			return a.MaxWidth*a.MinHeight > b.MaxWidth*b.MinHeight
+			return s.cam.resolutions[i].Resolution() < s.cam.resolutions[j].Resolution()
 		})
 	}
 
 	_, _, _, err = s.cam.cam.SetImageFormat(
 		pix,
-		s.cam.resolutions[s.cam.activeRes].MaxWidth,
-		s.cam.resolutions[s.cam.activeRes].MaxHeight,
+		s.cam.resolutions[s.cam.activeRes].width,
+		s.cam.resolutions[s.cam.activeRes].height,
 	)
 
 	if err != nil {
@@ -215,12 +232,37 @@ func (s *Server) addBytes(bytes uint64) {
 		}
 
 		switch {
+		case factor > 1.05 &&
+			s.fps == s.quality.MinFPS &&
+			s.jpegOpts.Quality == s.quality.MinJPEGQuality:
 
-		case factor > 1.05 && s.fps == s.quality.MinFPS && s.jpegOpts.Quality == s.quality.MinJPEGQuality:
-			s.cam.activeRes++
+			if s.cam.activeRes > 0 {
+				s.cam.activeRes--
+			}
 
-		case factor < 0.9 && s.fps == s.quality.MaxFPS && s.jpegOpts.Quality == s.quality.MaxJPEGQuality:
-			s.cam.activeRes--
+		case time.Since(s.lastResolutionAdjustment).Seconds() > 30 &&
+			factor < 0.9 &&
+			s.fps == s.quality.MaxFPS &&
+			s.jpegOpts.Quality == s.quality.MaxJPEGQuality:
+
+			if s.cam.activeRes+1 < len(s.cam.resolutions) {
+				// TODO
+				// very very rough guess to see if upscaling will not
+				// immediately lead to a downscale
+				current := s.cam.resolutions[s.cam.activeRes].Resolution()
+				next := s.cam.resolutions[s.cam.activeRes+1].Resolution()
+				result := float64(current) / float64(next)
+
+				fps := float64(s.quality.MinFPS) / float64(s.quality.MaxFPS)
+				q := float64(s.quality.MinJPEGQuality) / float64(s.quality.MaxJPEGQuality)
+				start := factor * fps * q
+
+				if result > start {
+					s.fps = int(start / result * float64(s.fps))
+					s.jpegOpts.Quality = int(start / result * float64(s.jpegOpts.Quality))
+					s.cam.activeRes++
+				}
+			}
 
 		case factor > 1.05:
 			s.fps /= int(factor)
@@ -231,7 +273,7 @@ func (s *Server) addBytes(bytes uint64) {
 		case factor < 0.9:
 			if s.fps <= s.quality.MinFPS+(s.quality.MaxFPS-s.quality.MinFPS)/2 ||
 				s.jpegOpts.Quality >= s.quality.MaxJPEGQuality {
-				s.fps++
+				s.fps += int(1 / factor)
 			}
 
 			s.jpegOpts.Quality = int(float64(s.jpegOpts.Quality) / factor)
@@ -249,12 +291,6 @@ func (s *Server) addBytes(bytes uint64) {
 			s.fps = s.quality.MaxFPS
 		}
 
-		if s.cam.activeRes < 0 {
-			s.cam.activeRes = 0
-		} else if s.cam.activeRes >= len(s.cam.resolutions) {
-			s.cam.activeRes = len(s.cam.resolutions) - 1
-		}
-
 		if oActiveRes != s.cam.activeRes {
 			s.cam.reinit = true
 		}
@@ -262,12 +298,17 @@ func (s *Server) addBytes(bytes uint64) {
 		if s.fps != oFPS ||
 			s.jpegOpts.Quality != oQuality ||
 			oActiveRes != s.cam.activeRes {
+
 			s.lastAdjustment = time.Now()
+			if oActiveRes != s.cam.activeRes {
+				s.lastResolutionAdjustment = time.Now()
+			}
+
 			s.l.Printf(
 				"%.1fkB/s throughput => Quality adjustment: %dx%d @ %dfps (jpeg: %d)",
 				throughput/1024,
-				s.cam.resolutions[s.cam.activeRes].MaxWidth,
-				s.cam.resolutions[s.cam.activeRes].MinHeight,
+				s.cam.resolutions[s.cam.activeRes].width,
+				s.cam.resolutions[s.cam.activeRes].height,
 				s.fps,
 				s.jpegOpts.Quality,
 			)
