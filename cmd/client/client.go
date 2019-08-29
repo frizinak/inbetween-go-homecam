@@ -16,7 +16,8 @@ func main() {
 	}
 
 	l := log.New(os.Stderr, "", 0)
-	v := view.New(l)
+	passChan := make(chan []byte)
+	v := view.New(l, passChan)
 	c := client.New(l, conf.Address, []byte(conf.Password))
 	tickIn := make(chan view.Reader)
 	tickOut := make(chan *client.Data)
@@ -28,7 +29,7 @@ func main() {
 	}()
 
 	go func() {
-		l.Fatal(c.Connect(tickOut))
+		l.Fatal(c.Connect(<-passChan, tickOut))
 	}()
 	v.Start(tickIn)
 }

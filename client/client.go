@@ -40,7 +40,7 @@ type Data struct {
 
 func (d *Data) Created() time.Time { return d.created }
 
-func (c *Client) Connect(data chan<- *Data) error {
+func (c *Client) Connect(pass2 []byte, data chan<- *Data) error {
 	var conn net.Conn
 	var connErr error
 	for {
@@ -68,6 +68,7 @@ func (c *Client) Connect(data chan<- *Data) error {
 		common := make([]byte, len(vars.CommonSecret))
 		copy(common, vars.CommonSecret)
 		common = append(common, c.pass...)
+		common = append(common, pass2...)
 		hash := sha512.Sum512(common)
 
 		var handshakeHash []byte

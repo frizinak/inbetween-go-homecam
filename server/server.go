@@ -65,6 +65,7 @@ type Server struct {
 	net struct {
 		addr     string
 		pass     []byte
+		pass2    []byte
 		maxPeers int
 
 		data []byte
@@ -98,6 +99,7 @@ func New(
 	l *log.Logger,
 	addr string,
 	pass []byte,
+	pass2 []byte,
 	device string,
 	quality Config,
 	maxPeers int,
@@ -126,6 +128,7 @@ func New(
 	s.net.maxPeers = maxPeers
 	s.net.since = time.Now()
 	s.net.pass = pass
+	s.net.pass2 = pass2
 
 	return s
 }
@@ -391,6 +394,7 @@ func (s *Server) conn(c net.Conn) {
 	common := make([]byte, len(vars.CommonSecret))
 	copy(common, vars.CommonSecret)
 	common = append(common, s.net.pass...)
+	common = append(common, s.net.pass2...)
 	hash := sha512.Sum512(common)
 
 	s.scryptRatelimit <- struct{}{}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/frizinak/inbetween-go-homecam/vars"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
 	"golang.org/x/mobile/event/size"
@@ -21,6 +22,11 @@ const touchTypeNone = 100
 type View struct {
 	l      *log.Logger
 	images *glutil.Images
+
+	phase       int
+	fingers     []int
+	passChan    chan []byte
+	fingersDown bool
 
 	frame    *glutil.Image
 	sz       size.Event
@@ -48,8 +54,13 @@ type View struct {
 	}
 }
 
-func New(l *log.Logger) *View {
-	v := &View{l: l, stopDecoder: make(chan struct{})}
+func New(l *log.Logger, passChan chan []byte) *View {
+	v := &View{
+		l:           l,
+		stopDecoder: make(chan struct{}),
+		fingers:     make([]int, 5),
+		passChan:    passChan,
+	}
 	v.touch.lastBegin.Type = touchTypeNone
 	v.touch.lastBegin2.Type = touchTypeNone
 	return v
@@ -111,6 +122,13 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 		r, g, b = 0.6, 0.2, 0.2
 	}
 
+	if v.phase == 0 {
+		r, g, b = 0.2, 0.2, 0.2
+		if v.fingersDown {
+			g = 0.6
+		}
+	}
+
 	glctx.ClearColor(r, g, b, 1)
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
 
@@ -132,6 +150,10 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 	}
 	width := owidth * scale
 	height := oheight * scale
+
+	if v.phase == 0 {
+		return
+	}
 
 	if sz != v.sz || v.reinit {
 		v.sz = sz
@@ -164,6 +186,38 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 		geom.Point{geom.Pt(x1), geom.Pt(y2)},
 		v.frame.RGBA.Bounds(),
 	)
+}
+
+func (v *View) handlePassword(e touch.Event, sz size.Event, pass []byte) []byte {
+	s := int(e.Sequence)
+	if s >= len(v.fingers) {
+		return pass
+	}
+
+	switch e.Type {
+	case touch.TypeBegin:
+		v.fingers[s] = 2
+		v.fingersDown = true
+	case touch.TypeEnd:
+		v.fingers[s] = 1
+		for i := range v.fingers {
+			if v.fingers[i] == 2 {
+				return pass
+			}
+		}
+		v.fingersDown = false
+
+		var sum byte
+		for i := range v.fingers {
+			if v.fingers[i] > 0 {
+				sum++
+			}
+			v.fingers[i] = 0
+		}
+		pass = append(pass, sum)
+	}
+
+	return pass
 }
 
 func (v *View) handleTouch(e touch.Event, sz size.Event) {
@@ -248,6 +302,7 @@ func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Rea
 	var glctx gl.Context
 	var sz size.Event
 	vpUpdate := w.RequiresViewportUpdate()
+	pass := make([]byte, 0, vars.TouchPasswordLen)
 	for e := range events {
 		switch e := f(e).(type) {
 		case lifecycle.Event:
@@ -261,6 +316,16 @@ func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Rea
 				glctx = nil
 			}
 		case touch.Event:
+			if v.phase == 0 {
+				pass = v.handlePassword(e, sz, pass)
+				if len(pass) >= vars.TouchPasswordLen {
+					v.passChan <- pass[:vars.TouchPasswordLen]
+					v.phase = 1
+				}
+
+				continue
+			}
+
 			v.handleTouch(e, sz)
 		case size.Event:
 			sz = e

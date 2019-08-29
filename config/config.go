@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Address  string
-	Device   string
-	Password string
-	MaxPeers int
-	Quality  Quality
+	Address       string
+	Device        string
+	Password      string
+	TouchPassword string
+	MaxPeers      int
+	Quality       Quality
 }
 
 type Quality struct {
