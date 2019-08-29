@@ -56,6 +56,7 @@ func (c *Client) Connect(data chan<- *Data) error {
 		var err error
 		conn, err = net.Dial("tcp", c.addr)
 		if err != nil {
+			time.Sleep(time.Second)
 			continue
 		}
 
