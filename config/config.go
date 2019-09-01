@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Address  string
-	Device   string
-	Password string
-	MaxPeers int
-	Quality  Quality
+	Address       string
+	Device        string
+	Password      string
+	TouchPassword []byte
+	MaxPeers      int
+	Quality       Quality
 }
 
 type Quality struct {
@@ -66,9 +67,10 @@ func EnsureConfig(file string) error {
 	}
 
 	c := Config{
-		Address:  "127.0.0.1:1234",
-		Password: randPass,
-		Device:   "/dev/video0",
+		Address:       "127.0.0.1:1234",
+		Password:      randPass,
+		TouchPassword: []byte{8, 8, 8, 8, 8},
+		Device:        "/dev/video0",
 		Quality: Quality{
 			MinFPS: 5,
 			MaxFPS: 20,

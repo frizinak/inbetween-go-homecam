@@ -29,10 +29,11 @@ func main() {
 		return
 	}
 
+	pass := append([]byte(conf.Password), conf.TouchPassword...)
 	s := server.New(
 		l,
 		conf.Address,
-		[]byte(conf.Password),
+		pass,
 		conf.Device,
 		conf.Quality,
 		conf.MaxPeers,

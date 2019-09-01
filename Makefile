@@ -1,5 +1,6 @@
-SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' \))
+SRC := $(shell find . -type f \( -name '*.go' -o -name 'AndroidManifest.xml' \); echo bound/bound.go)
 BIN := $(shell echo "$$GOBIN")
+BIND :=$(shell find bind -type f)
 
 .PHONY: all
 all: dist/client.apk \
@@ -40,6 +41,9 @@ go.sum:
 
 dist:
 	@mkdir dist 2>/dev/null
+
+bound/bound.go: $(BIND) vendor
+	go run ./cmd/bindata
 
 .PHONY: run-mobile-client
 run-mobile-client: vendor
