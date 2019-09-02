@@ -3,8 +3,6 @@
 package view
 
 import (
-	"log"
-
 	"golang.org/x/exp/shiny/driver/gldriver"
 	"golang.org/x/exp/shiny/screen"
 	"golang.org/x/mobile/event/lifecycle"
@@ -23,7 +21,7 @@ func (v *View) Start(tick chan Reader) {
 	gldriver.Main(func(s screen.Screen) {
 		w, err := s.NewWindow(nil)
 		if err != nil {
-			log.Fatal(err)
+			v.l.Fatal(err)
 		}
 		defer w.Release()
 
@@ -39,7 +37,10 @@ func (v *View) Start(tick chan Reader) {
 			}
 		}()
 
-		v.loop(&desktopWindow{Window: w}, events, convert, tick)
+		err = v.loop(&desktopWindow{Window: w}, events, convert, tick)
+		if err != nil {
+			v.l.Fatal(err)
+		}
 	})
 }
 

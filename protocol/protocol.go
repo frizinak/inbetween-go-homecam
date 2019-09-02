@@ -13,6 +13,12 @@ import (
 
 var (
 	ErrInvalidHandshake = errors.New("Invalid handshake")
+	ErrDenied           = errors.New("Server denied access")
+)
+
+var (
+	nok = []byte{0}
+	ok  = []byte{1}
 )
 
 type Protocol struct {
@@ -52,9 +58,11 @@ func (p *Protocol) HandshakeServer(pass []byte, rw io.ReadWriter) (*crypto.Immut
 	}
 
 	if !bytes.Equal(remoteHandshakeHash, handshakeHash) {
+		rw.Write(nok)
 		return nil, ErrInvalidHandshake
 	}
 
+	rw.Write(ok)
 	return crypto.NewImmutableKeyEncrypter(encryptionPass, 60, p.encryptionCost)
 }
 
@@ -71,6 +79,14 @@ func (p *Protocol) HandshakeClient(pass []byte, rw io.ReadWriter) (*crypto.Immut
 
 	if _, err = rw.Write(handshakeHash); err != nil {
 		return nil, err
+	}
+
+	status := make([]byte, 1)
+	if _, err = rw.Read(status); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(ok, status) {
+		return nil, ErrDenied
 	}
 
 	return crypto.NewImmutableKeyDecrypter(decryptionPass), nil

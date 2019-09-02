@@ -15,6 +15,9 @@ func (m *mobileWindow) RequiresViewportUpdate() bool { return false }
 
 func (v *View) Start(tick chan Reader) {
 	app.Main(func(mobile app.App) {
-		v.loop(&mobileWindow{mobile}, mobile.Events(), mobile.Filter, tick)
+		err := v.loop(&mobileWindow{mobile}, mobile.Events(), mobile.Filter, tick)
+		if err != nil {
+			v.l.Fatal(err)
+		}
 	})
 }

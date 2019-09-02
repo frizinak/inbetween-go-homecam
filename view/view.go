@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
@@ -32,8 +33,15 @@ type View struct {
 	sz     size.Event
 	reinit bool
 
+	status struct {
+		writer *GlText
+		chn    chan string
+		msg    string
+	}
+
 	auth struct {
 		passChan    chan<- []byte
+		pass        []byte
 		passLen     int
 		phase       int
 		last        touch.Event
@@ -65,27 +73,37 @@ type View struct {
 	}
 }
 
-func New(l *log.Logger, passChan chan<- []byte, passLen int) *View {
+func New(l *log.Logger, passChan chan<- []byte, statusChan chan string, passLen int) *View {
 	v := &View{l: l, stopDecoder: make(chan struct{})}
 	v.auth.passChan = passChan
 	v.auth.passLen = passLen
 	v.auth.last.Type = touchTypeNone
 	v.touch.lastBegin.Type = touchTypeNone
 	v.touch.lastBegin2.Type = touchTypeNone
+	v.status.chn = statusChan
+
 	return v
 }
 
-func (v *View) initStage(glctx gl.Context, tick chan Reader) {
+func (v *View) initStage(glctx gl.Context, tick chan Reader) error {
+	v.sz = size.Event{}
 	v.images = glutil.NewImages(glctx)
 
-	// todo error handling
+	v.status.writer = NewGlText(v.images)
+	err := v.status.writer.SetReadFont(bytes.NewBuffer(bound.MustAsset("inconsolata.ttf")))
+	if err != nil {
+		return err
+	}
+	v.status.writer.Write(v.status.msg)
+	v.status.writer.SetColor(color.Gray{255})
+
 	arrows := []byte{1, 2, 4, 8, 1 | 4, 1 | 8, 2 | 4, 2 | 8}
 	v.arrows = make(map[byte]*glutil.Image, len(arrows))
 	for i := range arrows {
 		r := bytes.NewBuffer(bound.MustAsset(fmt.Sprintf("arrow-%d.png", arrows[i])))
 		img, err := png.Decode(r)
 		if err != nil {
-			panic(err)
+			return err
 		}
 
 		b := img.Bounds()
@@ -128,11 +146,20 @@ func (v *View) initStage(glctx gl.Context, tick chan Reader) {
 					image.Point{},
 					draw.Src,
 				)
-				v.frame.Upload()
+
+			case msg := <-v.status.chn:
+				if v.status.writer == nil {
+					continue
+				}
+				v.status.msg = msg
+				v.status.writer.Write(msg)
 			}
+
 		}
 
 	}()
+
+	return nil
 }
 
 func (v *View) destroyStage(glctx gl.Context) {
@@ -143,6 +170,10 @@ func (v *View) destroyStage(glctx gl.Context) {
 	if v.frame != nil {
 		v.frame.Release()
 		v.frame = nil
+	}
+	if v.status.writer != nil {
+		v.status.writer.Release()
+		v.status.writer = nil
 	}
 	v.images.Release()
 }
@@ -164,9 +195,22 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 	glctx.Clear(gl.COLOR_BUFFER_BIT)
 
 	pppt := float64(sz.PixelsPerPt)
+	if sz != v.sz || v.reinit {
+		v.sz = sz
+		v.reinit = false
+		v.framePos.offsetX = 0
+		v.framePos.offsetY = 0
+		v.framePos.previousZoom = 1
+		v.framePos.zoom = 1
+		v.status.writer.SetFontSize(10, pppt*72)
+	}
+
+	if err := v.status.writer.Draw(sz, image.Pt(5, 5)); err != nil {
+		v.l.Println(err)
+	}
+
 	szWidth := float64(sz.WidthPt)
 	szHeight := float64(sz.HeightPt)
-
 	if v.auth.phase == 0 {
 		if v.auth.fingersDown && v.auth.n > 0 {
 			a := v.arrows[v.auth.n]
@@ -216,15 +260,6 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 	width := owidth * scale
 	height := oheight * scale
 
-	if sz != v.sz || v.reinit {
-		v.sz = sz
-		v.reinit = false
-		v.framePos.offsetX = 0
-		v.framePos.offsetY = 0
-		v.framePos.previousZoom = 1
-		v.framePos.zoom = 1
-	}
-
 	zoomDiff := v.framePos.zoom - v.framePos.previousZoom
 	if zoomDiff != 0 {
 		v.framePos.offsetX -= pppt * (width*v.framePos.zoom - width*v.framePos.previousZoom) / 2
@@ -240,6 +275,7 @@ func (v *View) paint(glctx gl.Context, sz size.Event) {
 	y1 := geom.Pt(float64(v.bounds.Min.Y)*scale*v.framePos.zoom + offsetY)
 	y2 := geom.Pt(float64(v.bounds.Max.Y)*scale*v.framePos.zoom + offsetY)
 
+	v.frame.Upload()
 	v.frame.Draw(
 		sz,
 		geom.Point{x1, y1},
@@ -388,18 +424,31 @@ type window interface {
 	RequiresViewportUpdate() bool
 }
 
-func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Reader) {
+func (v *View) ClearPass() {
+	v.auth.phase = 0
+	v.auth.pass = make([]byte, 0, v.auth.passLen)
+	v.auth.last.Type = touchTypeNone
+	v.auth.n = 0
+	v.auth.fingersDown = false
+
+	v.status.chn <- "Swipe password"
+}
+
+func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Reader) error {
 	var glctx gl.Context
 	var sz size.Event
 	vpUpdate := w.RequiresViewportUpdate()
-	pass := make([]byte, 0, v.auth.passLen)
+	v.ClearPass()
 	for e := range events {
 		switch e := f(e).(type) {
 		case lifecycle.Event:
 			switch e.Crosses(lifecycle.StageVisible) {
 			case lifecycle.CrossOn:
 				glctx, _ = e.DrawContext.(gl.Context)
-				v.initStage(glctx, tick)
+				if err := v.initStage(glctx, tick); err != nil {
+					return err
+				}
+
 				w.Send(paint.Event{})
 			case lifecycle.CrossOff:
 				v.destroyStage(glctx)
@@ -407,9 +456,9 @@ func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Rea
 			}
 		case touch.Event:
 			if v.auth.phase == 0 {
-				pass = v.handlePassword(e, sz, pass)
-				if len(pass) >= v.auth.passLen {
-					v.auth.passChan <- pass[:v.auth.passLen]
+				v.auth.pass = v.handlePassword(e, sz, v.auth.pass)
+				if len(v.auth.pass) >= v.auth.passLen {
+					v.auth.passChan <- v.auth.pass[:v.auth.passLen]
 					v.auth.phase = 1
 				}
 
@@ -430,4 +479,6 @@ func (v *View) loop(w window, events <-chan interface{}, f filter, tick chan Rea
 			w.Send(paint.Event{})
 		}
 	}
+
+	return nil
 }

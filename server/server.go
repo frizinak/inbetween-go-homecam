@@ -382,6 +382,7 @@ func (s *Server) conn(c net.Conn) {
 	s.scryptRatelimit <- struct{}{}
 	crypter, err := s.net.proto.HandshakeServer(common, c)
 	if err != nil {
+		<-s.scryptRatelimit
 		s.connErr(err)
 		return
 	}
@@ -395,6 +396,9 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
+	w := newCountWriter(c)
+	var nbytes uint64
+
 	for {
 		if err := c.SetDeadline(time.Now().Add(time.Second * 5)); err != nil {
 			s.connErr(err)
@@ -407,14 +411,9 @@ func (s *Server) conn(c net.Conn) {
 			return
 		}
 
+		w.Reset()
 		if frame == s.frameCount {
-			w := &countWriter{n: 0, w: c}
-			if _, err = w.Write([]byte{0, 0, 0}); err != nil {
-				s.connErr(err)
-				return
-			}
-
-			if err = w.Flush(); err != nil {
+			if _, err = w.Flush([]byte{0, 0, 0}); err != nil {
 				s.connErr(err)
 				return
 			}
@@ -424,18 +423,18 @@ func (s *Server) conn(c net.Conn) {
 		}
 
 		frame = s.frameCount
-		w := &countWriter{n: 0, w: c}
 		err = crypter.Encrypt(bytes.NewBuffer(s.net.data), w)
 		if err != nil {
 			s.connErr(err)
 			return
 		}
 
-		s.addBytes(uint64(w.n))
-		if err = w.Flush(); err != nil {
+		nbytes, err = w.Flush(nil)
+		if err != nil {
 			s.connErr(err)
 			return
 		}
+		s.addBytes(nbytes)
 	}
 }
 

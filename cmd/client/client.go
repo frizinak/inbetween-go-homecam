@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"time"
 
 	"github.com/frizinak/inbetween-go-homecam/client"
 	"github.com/frizinak/inbetween-go-homecam/config"
@@ -21,9 +22,11 @@ func main() {
 	}
 
 	l := log.New(os.Stderr, "", 0)
+	passChan := make(chan []byte)
 	pass2Chan := make(chan []byte)
-	pass := []byte(conf.Password)
-	v := view.New(l, pass2Chan, touchPassLen)
+
+	statusChan := make(chan string, 1)
+	v := view.New(l, pass2Chan, statusChan, touchPassLen)
 	tickIn := make(chan view.Reader)
 	tickOut := make(chan *client.Data)
 
@@ -33,8 +36,10 @@ func main() {
 		}
 	}()
 
-	go func() {
-		if *genPass {
+	c, info := client.New(l, conf.Address, passChan)
+
+	if *genPass {
+		go func() {
 			pass := <-pass2Chan
 			ints := make([]int, len(pass))
 			for i := range pass {
@@ -45,10 +50,46 @@ func main() {
 				l.Fatal(err)
 			}
 			os.Exit(0)
-		}
 
-		pass = append(pass, <-pass2Chan...)
-		c := client.New(l, conf.Address, pass)
+		}()
+		v.Start(tickIn)
+	}
+
+	go func() {
+		var str string
+		var last string
+		for msg := range info {
+			switch msg {
+			case client.InfoConnecting:
+				str = "Connecting..."
+			case client.InfoConnected:
+				str = "Connected"
+			case client.InfoReconnecting:
+				str = "Reconnecting..."
+			case client.InfoError:
+				str = "Something went wrong!"
+			case client.InfoHandshakeFail:
+				str = "Wrong password"
+				go func() {
+					time.Sleep(time.Second * 1)
+					v.ClearPass()
+				}()
+			}
+
+			if str != "" && str != last {
+				last = str
+				statusChan <- str
+			}
+		}
+	}()
+
+	go func() {
+		for p := range pass2Chan {
+			passChan <- append([]byte(conf.Password), p...)
+		}
+	}()
+
+	go func() {
 		l.Fatal(c.Connect(tickOut))
 	}()
 
