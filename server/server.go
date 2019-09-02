@@ -2,8 +2,6 @@ package server
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/sha512"
 	"errors"
 	"fmt"
 	"image/jpeg"
@@ -15,9 +13,8 @@ import (
 	"time"
 
 	"github.com/blackjack/webcam"
-	"github.com/frizinak/inbetween-go-homecam/crypto"
+	"github.com/frizinak/inbetween-go-homecam/protocol"
 	"github.com/frizinak/inbetween-go-homecam/vars"
-	"golang.org/x/crypto/scrypt"
 )
 
 type Resolution struct {
@@ -73,6 +70,8 @@ type Server struct {
 		peers   int
 		bytes   uint64
 		since   time.Time
+
+		proto *protocol.Protocol
 	}
 
 	cam struct {
@@ -126,6 +125,12 @@ func New(
 	s.net.maxPeers = maxPeers
 	s.net.since = time.Now()
 	s.net.pass = pass
+	s.net.proto = protocol.New(
+		vars.HandshakeCost,
+		vars.EncryptCost,
+		vars.HandshakeLen,
+		vars.HandshakeHashLen,
+	)
 
 	return s
 }
@@ -371,54 +376,20 @@ func (s *Server) conn(c net.Conn) {
 		return
 	}
 
-	handshake := make([]byte, vars.HandshakeLen)
-	if _, err := rand.Read(handshake); err != nil {
-		s.connErr(err)
-		return
-	}
-
-	if _, err := c.Write(handshake); err != nil {
-		s.connErr(err)
-		return
-	}
-
-	remoteHandshakeHash := make([]byte, vars.HandshakeHashLen)
-	if _, err := io.ReadFull(c, remoteHandshakeHash); err != nil {
-		s.connErr(err)
-		return
-	}
-
 	common := make([]byte, len(vars.CommonSecret))
 	copy(common, vars.CommonSecret)
 	common = append(common, s.net.pass...)
-	hash := sha512.Sum512(common)
-
 	s.scryptRatelimit <- struct{}{}
-	handshakeHash, err := scrypt.Key(
-		hash[:],
-		handshake,
-		1<<vars.HandshakeCost,
-		8,
-		1,
-		vars.HandshakeHashLen,
-	)
-	<-s.scryptRatelimit
+	crypter, err := s.net.proto.HandshakeServer(common, c)
 	if err != nil {
 		s.connErr(err)
 		return
 	}
-
-	if !bytes.Equal(remoteHandshakeHash, handshakeHash) {
-		s.l.Println("Invalid handshake", c.RemoteAddr())
-		return
-	}
+	<-s.scryptRatelimit
 
 	s.addClient(1)
 	defer s.addClient(-1)
 	s.l.Println("New client", c.RemoteAddr())
-
-	pass := append(handshakeHash, s.net.pass...)
-	crypter, err := crypto.NewImmutableKeyEncrypter(pass, 60, vars.EncryptCost)
 	if err != nil {
 		s.connErr(err)
 		return
