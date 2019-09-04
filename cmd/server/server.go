@@ -29,7 +29,7 @@ func main() {
 		return
 	}
 
-	pass := append([]byte(conf.Password), conf.TouchPassword...)
+	pass := append([]byte(conf.Password), conf.RawTouchPassword()...)
 	s := server.New(
 		l,
 		conf.Address,

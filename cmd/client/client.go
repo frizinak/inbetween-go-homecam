@@ -45,10 +45,17 @@ func main() {
 			for i := range pass {
 				ints[i] = int(pass[i])
 			}
+			os.Stdout.WriteString("{\n    \"TouchPassword\": ")
 			enc := json.NewEncoder(os.Stdout)
 			if err := enc.Encode(ints); err != nil {
 				l.Fatal(err)
 			}
+
+			os.Stdout.WriteString("    \"TouchPassword\": ")
+			if err := enc.Encode(config.TouchPassword(pass).String()); err != nil {
+				l.Fatal(err)
+			}
+			os.Stdout.WriteString("}\n")
 			os.Exit(0)
 
 		}()

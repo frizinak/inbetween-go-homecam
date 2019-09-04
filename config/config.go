@@ -2,19 +2,74 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
 )
 
+var (
+	touchMap = map[rune]byte{
+		'↑': 8,
+		'↓': 4,
+		'→': 2,
+		'←': 1,
+		'↖': 8 | 1,
+		'↗': 8 | 2,
+		'↙': 4 | 1,
+		'↘': 4 | 2,
+	}
+)
+
+type TouchPassword []byte
+
+func (t TouchPassword) String() string {
+	rev := make(map[byte]rune, len(touchMap))
+	for i := range touchMap {
+		rev[touchMap[i]] = i
+	}
+
+	str := make([]rune, len(t))
+	for i := range t {
+		str[i] = rev[t[i]]
+	}
+
+	return string(str)
+}
+
 type Config struct {
-	Address       string
-	Device        string
-	Password      string
-	TouchPassword []byte
-	MaxPeers      int
-	Quality       Quality
+	Address          string
+	Device           string
+	Password         string
+	TouchPassword    interface{}
+	rawTouchPassword TouchPassword
+	MaxPeers         int
+	Quality          Quality
+}
+
+func (c Config) RawTouchPassword() TouchPassword {
+	if c.rawTouchPassword != nil {
+		return c.rawTouchPassword
+	}
+
+	switch v := c.TouchPassword.(type) {
+	case []byte:
+		c.rawTouchPassword = v
+		return v
+	case string:
+		bts := make([]byte, 0, len(v)*2)
+		for _, c := range v {
+			b, ok := touchMap[c]
+			if !ok {
+				return nil
+			}
+			bts = append(bts, b)
+		}
+		return bts
+	}
+
+	return nil
 }
 
 type Quality struct {
@@ -54,7 +109,15 @@ func LoadConfig(file string) (Config, error) {
 		return *c, err
 	}
 	d := json.NewDecoder(f)
-	return *c, d.Decode(c)
+	if err = d.Decode(c); err != nil {
+		return *c, err
+	}
+
+	if c.RawTouchPassword() == nil {
+		return *c, errors.New("Invalid touchpassword type")
+	}
+
+	return *c, nil
 }
 
 func EnsureConfig(file string) error {
