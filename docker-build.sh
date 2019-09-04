@@ -8,6 +8,7 @@ dir="/go/src/github.com/frizinak/inbetween-go-homecam"
 docker rm "$name" 2>/dev/null || true
 docker build --build-arg DIR="$dir" -t "$image" .
 docker create --name "$name" "$image"
+rm -r ./dist
 docker cp "$name:$dir/dist" ./dist
 echo
 echo done
