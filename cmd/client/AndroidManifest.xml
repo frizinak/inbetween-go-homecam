@@ -1,20 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest android:versionCode="1" android:versionName="1.0" package="com.github.frizinak.homecam" platformBuildVersionCode="15" platformBuildVersionName="4.0.4-1406430" xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest android:versionCode="1" android:versionName="1.0" android:label="" package="com.github.frizinak.homecam" platformBuildVersionCode="15" platformBuildVersionName="4.0.4-1406430" xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-
     <application android:label="Homecam" android:debuggable="true">
         <activity
             android:label="Homecam"
             android:name="org.golang.app.GoNativeActivity"
             android:configChanges="keyboardHidden|orientation"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-            <meta-data android:name="android.app.lib_name" android:value="app" />
+            <meta-data android:name="android.app.lib_name" android:value="homecam" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
     </application>
-
 </manifest>

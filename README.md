@@ -1,4 +1,5 @@
-#
+![icon](https://raw.githubusercontent.com/frizinak/inbetween-go-homecam/master/cmd/client/assets/icon.png)
+
 Inbetween #3
 
 Webcam stream server with mobile client
