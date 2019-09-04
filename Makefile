@@ -45,6 +45,12 @@ dist:
 bound/bound.go: $(BIND) vendor
 	go run ./cmd/bindata
 
+.PHONY: reset
+reset:
+	rm -rf vendor
+	rm -rf dist
+	rm -f bound/bound.go
+
 .PHONY: run-mobile-client
 run-mobile-client: vendor
 	go run -tags 'production mobile' ./cmd/client
